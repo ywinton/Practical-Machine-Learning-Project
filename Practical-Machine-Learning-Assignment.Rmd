@@ -1,0 +1,99 @@
+---
+title: "Practical Machine Learning Assignment"
+author: "Yvette Winton"
+date: "October 8, 2016"
+output: html_document
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Objective
+
+The dataset in this study is from accelerometers on the belt, forearm, arm, and dumbell of 6 participants who were asked to perform barbell lifts correctly and incorrectly in 5 different ways.  The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. The final model will be used to predict 20 different test cases.  
+
+Load required packages for the prediction
+```{r}
+library(AppliedPredictiveModeling)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(gbm)
+library(plyr)
+```
+
+Load datasets for training and final dataset for 20 test cases
+```{r}
+fileUrl_train<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(fileUrl_train,destfile="./train4.csv",method="curl")
+data_train = read.csv("~/train4.csv", na.strings=c("NA","") , header=TRUE)
+
+fileUrl_test<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(fileUrl_test,destfile="./test4.csv",method="curl")
+data_test = read.csv("~/test4.csv", na.strings=c("NA","") , header=TRUE)
+```
+
+60% of the original train set is being used as test set and the rest is used as validation set
+```{r include=TRUE}
+# create a partition with the training dataset 
+inTrain  <- createDataPartition(data_train$classe, p=0.6, list=FALSE)
+TrainSet <- data_train[inTrain, ]
+TestSet  <- data_train[-inTrain, ]
+dim(TrainSet)
+dim(TestSet)
+```
+
+Clean up data set by omitting all the columns with mainly zero values, NAs or not for predication use.
+```{r include=TRUE}
+NZero <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -NZero]
+TestSet  <- TestSet[, -NZero]
+dim(TrainSet)
+dim(TestSet)
+NAOBS   <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.9
+TrainSet <- TrainSet[, NAOBS==FALSE]
+TestSet  <- TestSet[, NAOBS==FALSE]
+TrainSet <- TrainSet[, -(1:6)]
+TestSet <- TestSet[, -(1:6)]
+dim(TrainSet)
+dim(TestSet)
+#Check that the columns matches for the training and validation sets
+colnames(TrainSet)
+colnames(TestSet)
+```
+
+I plan on building the prediction model with trees , random forest and boosting with trees.  I will pick the final model with the highest accuracy after predicting each model with the validation set.  I originally used the entire dataset to run, but it took a long time, I decided to use a subset of the traing set to come up with model.  Since in the end, the best model accuracy turned out to be high, I did not increase my training sample size.  
+
+The accuracy of random forest prediction is 0.9936
+```{r include=TRUE}
+set.seed(2345)
+fitRF <- train(classe ~ ., data=TrainSet,method="rf",trControl=trainControl(method="cv", number=3))
+predRF<- predict(fitRF, TestSet)
+print(confusionMatrix(predRF, TestSet$classe))
+```
+
+The accuracy of tree prediction is 0.494.  As expected, this is a poorer prediction than random forest.
+```{r include=TRUE}
+set.seed(2345)
+Fitrpart <- train(classe ~ ., data = TrainSet, method="rpart")
+print(Fitrpart$finalModel)
+fancyRpartPlot(Fitrpart$finalModel)
+predRpart <- predict(Fitrpart, TestSet)
+print(confusionMatrix(predRpart , TestSet$classe))
+```
+
+The accuracy of boosting with trees prediction is 0.9625 which is an improvement from classification trees but not as good as random forest prediction.
+```{r include=TRUE}
+set.seed(2345)
+fitgbm <- train(classe~ ., data=TrainSet,method="gbm",trControl=trainControl(method="repeatedcv",number=5,repeats=1),verbose=FALSE)
+predgbm <- predict(fitgbm , TestSet)
+print(confusionMatrix(predgbm, TestSet$classe))
+```
+
+Since random forest prediction has the highest accuracy of 0.9936, it is used to predict the 20 test case and here is the result.
+```{r include=TRUE}
+print(predict(fitRF,data_test))
+```
